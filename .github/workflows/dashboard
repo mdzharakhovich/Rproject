@@ -1,0 +1,254 @@
+library(bslib)
+library(dbplyr)
+library(shiny)
+library(echarts4r)
+library(tidyverse)
+library(htmltools)
+library(MASS)
+
+
+#три странички юи
+ui <- fluidPage(
+  tags$head(
+    tags$style(HTML("
+      body {
+        background-color: #FDEFF5;
+        color: #4A004A;
+        font-family: 'Roboto Mono', monospace;
+      }
+      .navbar-default {
+        background-color: #FDEFF5;
+        border-color: #E6B3E6;
+      }
+      .navbar-default .navbar-brand {
+        color: #4A004A;
+      }
+      .navbar-default .navbar-brand:hover,
+      .navbar-default .navbar-brand:focus {
+        color: #710071;
+      }
+      .navbar-default .navbar-nav > li > a {
+        color: #4A004A;
+      }
+      .navbar-default .navbar-nav > li > a:hover,
+      .navbar-default .navbar-nav > li > a:focus {
+        color: #710071;
+        background-color: transparent;
+      }
+      .navbar-default .navbar-nav > .active > a,
+      .navbar-default .navbar-nav > .active > a:hover,
+      .navbar-default .navbar-nav > .active > a:focus {
+        color: #710071;
+        background-color: #E6B3E6;
+      }
+      .btn-info {
+        color: #FFFFFF;
+        background-color: #FF80DF;
+        border-color: #FF40BF;
+      }
+      .btn-info:hover,
+      .btn-info:focus,
+      .btn-info:active,
+      .btn-info.active,
+      .open .dropdown-toggle.btn-info {
+        color: #FFFFFF;
+        background-color: #FF4D9F;
+        border-color: #FF1A75;
+      }
+    "))
+  ),
+  tags$head(
+    tags$title("spotify app")
+  ),
+  titlePanel(
+    HTML("<h1 style='text-align: center; font-family: Roboto Mono;',>spotify music rating</h1>
+          <h4 style='text-align: center; font-family: Roboto Mono; color: #710071;'>music data of the top songs of the year from 2010 to 2019</h4>")
+  ),
+  
+  #тут кнопка со ссылкой на источник.
+  a(href = "https://www.datacamp.com/workspace/datasets/dataset-r-spotify-music", 
+    class = "btn btn-info", 
+    HTML("datasource")),
+  #конец кнопки
+  
+  navbarPage(
+    "songs in numbers:",
+    tabPanel(
+      "genre distribution",
+      verbatimTextOutput("selected"),
+      fluidRow(
+        mainPanel(
+          echarts4rOutput('plot3')
+        )
+      )
+    ),
+    tabPanel(
+      "duration",
+      fluidRow(
+        column(
+          width = 4,
+          selectInput("select_genre2", "Select Genre", choices = NULL)
+        ),
+        mainPanel(
+          echarts4rOutput('plot2')
+        )
+      )
+    ),
+    tabPanel(
+      "beats&energy",
+      fluidRow(  
+        column(
+        width = 4,
+        selectInput("select_genre1", "Select Genre", choices = NULL)
+      ),
+        mainPanel(
+          echarts4rOutput('plot'))
+      )
+    )
+  )
+)
+
+# сервер с двумя плотами
+server <- function(input, output, session) {
+  
+  data <- reactive({
+    spotify_data <- read.csv("https://raw.githubusercontent.com/mdzharakhovich/mommy/main/spotify_top_music.csv")
+    
+    spotify_data %>%
+      mutate(top.genre = recode(top.genre,
+                                "pop" = "pop", 
+                                'dance pop' = "dance", 
+                                'canadian pop' = "pop", 
+                                "barbadian pop" = "pop", 
+                                "acoustic pop" = "pop", 
+                                "art pop" = "pop", 
+                                "hollywood" = "pop",
+                                "neo mellow" = "neo mellow",
+                                "tropical house" = "house", 
+                                "permanent wave" = "wave",
+                                "indie pop" = "indie", 
+                                "moroccan pop" = "pop",
+                                'detroit hip hop' = 'hip hop',
+                                'electronic trap'='electro',
+                                'electro house'='electro',
+                                'electro'='electro',
+                                'irish singer-songwriter'='pop',
+                                'metropopolis'='pop',
+                                'folk-pop'='pop',
+                                'french indie pop'='pop',
+                                'canadian contemporary r&b'='r&b',
+                                'british soul'='soul',
+                                'canadian latin'='latin',
+                                'alternative r&b'='r&b',
+                                'celtic rock'='rock',
+                                'australian pop'='pop',
+                                'colombian pop'='pop',
+                                'candy pop'='pop',
+                                'atl hip hop'='hip hop',
+                                'baroque pop'='pop',
+                                'chicago rap'='rap',
+                                'boy band'='pop',
+                                'danish pop'='pop',
+                                'alaska indie'='indie',
+                                'australian dance'='dance',
+                                'complextro'='r&b',
+                                'belgian edm'='edm',
+                                'contemporary country'='country',
+                                'brostep'='rap',
+                                'escape room'='indie',
+                                'downtempo'='indie',
+                                'canadian hip hop'='hip hop',
+                                'australian hip hop' = 'hip hop',
+                                'big room'='indie',
+                                'electropop'='electro',
+                                'hip pop'='pop'))
+  })
+  
+  #дальше датасет, по которому надо построить plot1 и plot2 вместо первого датасета.
+  data2 <- reactive({
+    dataset <- read.csv("https://raw.githubusercontent.com/mdzharakhovich/mommy/main/spotify_top_music.csv")
+    dataset$year <- as.numeric(dataset$year)
+    
+    # фильтр по годам и жанрам
+    filtered_dataset <- dataset %>%
+      filter(year >= 2010 & year <= 2019, top.genre %in% c("pop", "hip hop", 'indie','electro','rap','soul','r&b','country','edm','rock', 'neo mellow', 'dance','wave', 'latin'))
+    
+    # считаем средние для бпм, поп, нрджи и дур.
+    means_by_year_genre <- filtered_dataset %>%
+      group_by(year, top.genre) %>%
+      summarize(mean_bpm = round(mean(bpm, na.rm = TRUE), 0),
+                mean_dur = round(mean(dur, na.rm = TRUE), 0),
+                mean_nrgy = round(mean(nrgy, na.rm = TRUE), 0),
+                mean_pop = round(mean(pop, na.rm = TRUE), 0))
+  })
+  #конец датасета. 
+  
+  observe({
+    updateSelectInput(session, "select_genre1", choices = unique(data()$top.genre))
+    updateSelectInput(session, "select_genre2", choices = unique(data()$top.genre))
+  })
+  
+  # plot 1
+  output$plot <- renderEcharts4r({
+    genre_data <- subset(data(), top.genre == input$select_genre1)
+    
+    #тут поменять на средние из нового датасета means_by_year_genre     
+    p <- genre_data %>%
+      e_charts(x = pop) %>%
+      e_histogram(
+        serie = bpm, 
+        name = 'beats per minute',
+        bar_width = "99%",
+        legend = TRUE
+      ) %>%
+      e_histogram(
+        serie = nrgy, 
+        name = 'energy of the song'
+      ) %>%
+      e_tooltip(trigger = 'axis', backgroundColor = '#fff') #Вот так меняем цвет всплывающих подсказок!!
+    
+    p %>%
+      e_theme('macarons') %>%
+      e_color(background = '#FDEFF5')
+  })
+  
+  # plot 2
+  output$plot2 <- renderEcharts4r({
+    genre_data <- subset(data(), top.genre == input$select_genre2)
+    
+    p2 <- genre_data %>%
+      e_charts(x = year) %>%
+      e_histogram(
+        serie = dur, 
+        name = 'duration of the song',
+        bar_width = "70%"
+      ) %>%
+      e_tooltip(trigger = 'axis', backgroundColor = '#fff')
+    
+    p2 %>%
+      e_theme('macarons') %>%
+      e_color(background = '#FDEFF5')
+  })
+  
+  
+  # plot 3 (pie chart). работает, но как добавить проценты???
+  
+  output$plot3 <- renderEcharts4r({
+    genre_data <- data() %>%
+      count(top.genre)
+    
+    p3 <- genre_data %>%
+      e_charts(top.genre) %>%
+      e_pie(n) %>%
+      e_tooltip(trigger = 'item', backgroundColor = '#fff') %>%
+      e_legend(orient = "vertical", right = "5", top = "15")
+    
+    p3 %>%
+      e_theme('macarons') %>%
+      e_color(background = '#FDEFF5')
+  })
+  
+}
+
+
+shinyApp(ui, server)
